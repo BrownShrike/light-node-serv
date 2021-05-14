@@ -1249,7 +1249,7 @@ export type { Server };
 
 set -o errexit
 
-sed -i "" "s/\"script\"\:\ \"\.\/dist\/app\.js\"/\"script\"\:\ \"\.\/app.js\"/g" dist/process.json`,
+sed -i "" "s/\\\"script\\\"\\\:\\ \\\"\\\.\\\/dist\\\/app\\\.js\\\"/\\\"script\\\"\\\:\\\ \\\"\\\.\\\/app.js\\\"/g" dist/process.json`,
             pattern: 'text'
         },
         {
@@ -1259,7 +1259,8 @@ sed -i "" "s/\"script\"\:\ \"\.\/dist\/app\.js\"/\"script\"\:\ \"\.\/app.js\"/g"
             content: 
 `
 <h1 align="center">
-	light-node-serv
+    light-node-serv [![NPM version](https://img.shields.io/npm/v/light-node-serv.svg)](https://www.npmjs.com/package/light-node-serv)
+	<br>
 	<br>
 </h1>
 
@@ -1271,8 +1272,8 @@ sed -i "" "s/\"script\"\:\ \"\.\/dist\/app\.js\"/\"script\"\:\ \"\.\/app.js\"/g"
 
 ### 安装
 
-1. npm install light-node-serv
-2. 在命令行执行 light-node-serv single -p your-project-name
+1. sudo npm install light-node-serv
+2. 在命令行执行 sudo light-node-serv single -p your-project-name
 3. 根据需要选装不同的模块
 
 
@@ -1303,7 +1304,7 @@ sed -i "" "s/\"script\"\:\ \"\.\/dist\/app\.js\"/\"script\"\:\ \"\.\/app.js\"/g"
 
 ### 打包
 
-* 在根目录下执行yarn build 或 npm run build，将生成dist文件夹，包含app.js、process.json和report.html文件，其中report.html文件是打包分析文件(可删除)，其他两个文件为业务功能文件，使用pm2 start process.json可运行打包后的服务。
+* 在根目录下执行yarn build 或 npm run build，将生成dist文件夹，包含app.js、process.json和report.html文件，其中report.html文件是打包结果分析文件(可删除)，其他两个文件为业务功能文件，使用pm2 start process.json可运行打包后的服务。
 
 ### 日志
 
@@ -1313,7 +1314,7 @@ sed -i "" "s/\"script\"\:\ \"\.\/dist\/app\.js\"/\"script\"\:\ \"\.\/app.js\"/g"
 
 ### distributer.ts
 
-* 这是分发请求的模块，在单服务文件模式下(single)，该模块将所有请求转发到/services/service.ts服务中。在多服务模式下(multiple)，根据请求中的SN转发到不同的服务中
+* 分发请求模块，在单服务文件模式下(single)，该模块将所有请求转发到/services/service.ts服务中。在多服务模式下(multiple 暂未开发)，根据请求中的SN转发到不同的服务中
 
 
 ### polyfill.ts
@@ -1388,7 +1389,7 @@ sed -i "" "s/\"script\"\:\ \"\.\/dist\/app\.js\"/\"script\"\:\ \"\.\/app.js\"/g"
 
 ### exportFile.ts
 
-* 目前提供数据以xlsx文档导出，请求地址http://127.0.0.1:8977/exportfile，参数{"order": "e1"}，这里的order参数可以自定义，前后端约定好可以互相识别意图就OK
+* 文件导出模块，目前提供数据以xlsx文档导出，请求地址http://127.0.0.1:8977/exportfile，参数{"order": "e1"}，这里的order参数可以自定义，前后端约定好可以互相识别意图就OK
   * httpStarter.ts
     \`\`\`
     import xlsx from 'node-xlsx';

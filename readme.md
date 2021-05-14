@@ -1,5 +1,6 @@
 <h1 align="center">
-	light-node-serv
+	light-node-serv [![NPM version](https://img.shields.io/npm/v/light-node-serv.svg)](https://www.npmjs.com/package/light-node-serv)
+	<br>
 	<br>
 </h1>
 
@@ -43,7 +44,7 @@
 
 ### 打包
 
-* 在根目录下执行yarn build 或 npm run build，将生成dist文件夹，包含app.js、process.json和report.html文件，其中report.html文件是打包分析文件(可删除)，其他两个文件为业务功能文件，使用pm2 start process.json可运行打包后的服务。
+* 在根目录下执行yarn build 或 npm run build，将生成dist文件夹，包含app.js、process.json和report.html文件，其中report.html文件是打包结果分析文件(可删除)，其他两个文件为业务功能文件，使用pm2 start process.json可运行打包后的服务。
 
 ### 日志
 
