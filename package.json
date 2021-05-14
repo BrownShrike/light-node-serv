@@ -1,6 +1,6 @@
 {
     "name": "light-node-serv",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "description": "A quick light DIY framework for node service",
     "main": "index.js",
     "scripts": {

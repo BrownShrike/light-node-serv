@@ -1,5 +1,5 @@
 <h1 align="center">
-	light-node-serv [![NPM version](https://img.shields.io/npm/v/light-node-serv.svg)](https://www.npmjs.com/package/light-node-serv)
+	light-node-serv
 	<br>
 	<br>
 </h1>
@@ -12,8 +12,8 @@
 
 ### 安装
 
-1. npm install light-node-serv
-2. 在命令行执行 light-node-serv single -p your-project-name
+1. sudo npm install light-node-serv
+2. 在命令行执行 sudo light-node-serv single -p your-project-name
 3. 根据需要选装不同的模块
 
 

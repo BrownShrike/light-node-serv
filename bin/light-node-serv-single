@@ -1259,7 +1259,7 @@ sed -i "" "s/\\\"script\\\"\\\:\\ \\\"\\\.\\\/dist\\\/app\\\.js\\\"/\\\"script\\
             content: 
 `
 <h1 align="center">
-    light-node-serv [![NPM version](https://img.shields.io/npm/v/light-node-serv.svg)](https://www.npmjs.com/package/light-node-serv)
+    light-node-serv
 	<br>
 	<br>
 </h1>
