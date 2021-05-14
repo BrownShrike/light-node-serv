@@ -1,0 +1,30 @@
+{
+    "name": "light-node-serv",
+    "version": "1.0.1",
+    "description": "A quick light DIY framework for node service",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/BrownShrike/light-node-serv.git"
+    },
+    "keywords": [
+        "node",
+        "service",
+        "light"
+    ],
+    "author": "liuhao",
+    "license": "MIT",
+    "bin": {
+        "light-node-serv": "./bin/init.js"
+    },
+    "dependencies": {
+        "commander": "7.2.0"
+    },
+    "bugs": {
+        "url": "https://github.com/BrownShrike/light-node-serv/issues"
+    },
+    "homepage": "https://github.com/BrownShrike/light-node-serv#readme"
+}

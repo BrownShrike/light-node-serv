@@ -1,0 +1,2067 @@
+#! /usr/bin/env node
+
+/**
+ * node测试脚手架
+ */
+const exec = require('child_process').exec;
+const fs = require('fs');
+const program = require('commander');
+
+program
+    .option('-p, --project [projectname]', 'name of noder project');
+
+program.parse(process.argv);
+const options = program.opts();
+
+// 默认设置
+const userConfig = {
+    name: '',           //  项目名称
+    version: '',        //  项目版本号
+    author: '',         //  项目作者
+    description: '',       //  项目描述
+    mysql: '',        //  mysql模块
+    exportFile: '',        //  导出xlsx文件
+    parseXlsx: '',        //  是否需要xlsx文件解析模块
+    uploadFile: '',           //  是否需要接收文件上传模块
+    schedule: '',       //  定时执行模块
+}
+
+
+const platform = process.platform === 'win32' ? 'windows' : 'unix';
+
+const split = platform === 'windows' ? '\\' : '/';
+let preProjectDocument = options.project;
+
+var basePath = process.cwd() + (platform === 'windows' ? '\\' : '/');
+
+var package_manager = 'yarn';
+// 检测当前系统是否安装yarn包管理器
+let yarn_test = 'java -v';
+
+exec(yarn_test, (error, stdout, stderr) => {
+    if (error) {
+        package_manager = 'npm';
+    }
+    if (stdout) {
+        console.log('>>yarn version:' + stdout);
+        collectUserConfig();
+    }
+    if (stderr) {
+        package_manager = 'npm';
+        collectUserConfig();
+    }
+});
+
+
+// 收集用户自定义内容
+function collectUserConfig() {
+    // 命令式，执行命令时希望在当前文件夹下创建自定义项目文件夹
+    process.stdout.write('[1/9]name (' + preProjectDocument + '):');
+    process.stdin.on('data', (input) => {
+        input = input.toString().trim();
+    
+        if (userConfig.name === '') {
+            userConfig.name = input || preProjectDocument;
+            // 开始设置版本号
+            process.stdout.write('[2/9]version (1.0.0):');
+        } else if (userConfig.version === '') {
+            userConfig.version = input || '1.0.0';
+            // 开始设置作者
+            process.stdout.write('[3/9]author (unknown):')
+        } else if (userConfig.author === '') {
+            userConfig.author = input || 'unknown';
+            // 开始设置项目描述
+            process.stdout.write('[4/9]项目描述？(description?):');
+        } else if (userConfig.description === '') {
+            userConfig.description = input || 'demo of ' + userConfig.name;
+            // 开始设置项目是否需要mysql模块
+            process.stdout.write('[5/9]是否需要mysql模块？(Do you need mysql module ?) [yes|no  defaults to no]:');
+        } else if (userConfig.mysql === '') {
+            userConfig.mysql = checkInput(input) ? 'yes' : 'no';
+            // 开始设置项目是否需要xlsx文件导出模块
+            process.stdout.write('[6/9]是否需要xlsx文件导出模块？(Do you need xlsx file export module ?) [yes|no  defaults to no]:');
+        } else if (userConfig.exportFile === '') {
+            userConfig.exportFile = checkInput(input) ? 'yes' : 'no';
+            // 开始设置是否需要xlsx解析模块
+            process.stdout.write('[7/9]是否需要xlsx文件解析模块？(Do you need xlsx file parsing module ?) [yes|no  defaults to no]:');
+        } else if (userConfig.parseXlsx === '') {
+            userConfig.parseXlsx = checkInput(input) ? 'yes' : 'no';
+            // 开始设置是否需要接收文件上传模块
+            process.stdout.write('[8/9]是否需要接收文件上传模块？(Do you need a file upload module ?) [yes|no  defaults to no]:');
+        } else if (userConfig.uploadFile === '') {
+            userConfig.uploadFile = checkInput(input) ? 'yes' : 'no';
+            // 开始设置是否需要定时执行模块
+            process.stdout.write('[9/9]是否需要定时任务模块？(Do you need a timing task module ?) [yes|no  defaults to no]:');
+        } else if (userConfig.schedule === '') {
+            userConfig.schedule = checkInput(input) ? 'yes' : 'no';
+            console.log('>>开始创建工程目录结构...(Start creating project catalog...)' + '\n');
+            initProject();
+        }
+    })
+}
+
+// 创建工程根文件夹
+function initProject() {
+    basePath = basePath + options.project + (platform === 'windows' ? '\\' : '/');
+    // mkdir
+    fs.mkdir(basePath, (err, data) => {
+        if (err) {
+            console.log('创建工程目录失败！(Failed to create project directory!)', err);
+            return;
+        }
+        mkdirs_step();
+    });
+}
+
+// 工具函数
+function checkInput(input) {
+    let userChoice = false;
+    switch (input) {
+        case 'y':
+        case 'Y':
+        case 'yes':
+        case 'Yes':
+        case 'YES':
+            userChoice = true;
+            break;
+        default:
+            break;
+    }
+    return userChoice;
+}
+
+
+// 生成文件夹
+const dirs = [
+    ['config'],
+    ['modules'],
+    ['modules', 'mandatory'],
+    ['modules', 'optional'],
+    ['services'],
+    ['starter'],
+    ['types'],
+    ['scripts'],
+    ['shell']
+]
+
+function mkdir(path) {
+    return new Promise((resolve, _reject) => {
+        fs.mkdir(path, (err, _data) => {
+            if (err) {throw err};
+            resolve(true);
+        });
+    })
+}
+
+// 递归创建工程所有目录
+async function mkdirs_step() {
+    const item = dirs.shift();
+    if (item) {
+        const result = await mkdir(basePath + (item.join(split)));
+        if (result) mkdirs_step();
+    } else {
+        console.log('创建工程目录完成！(Creating project directory finished!)');
+        mkFiles();
+    }
+}
+
+// 创建工程必要文件
+function mkFiles() {
+    const package_json = {
+        "name": userConfig.name,
+        "version": userConfig.version,
+        "main": "index.js",
+        "license": "MIT",
+        "scripts": {
+            "build": (platform === "windows" ? "rd /s" : "rm -rf") + " dist && ts-node ./scripts/build.ts && sh ./shell/build.sh",
+            "dev": "concurrently --handle-input \"ts-node ./scripts/start-dev.ts\"  \"wait-on ./dist/app.js && nodemon\"",
+            "stop": "pm2 stop " + userConfig.name + " && pm2 delete " + userConfig.name,
+            "clear": "rm -rf dist pm2log && pm2 stop " + userConfig.name + " && pm2 delete " + userConfig.name
+        },
+        "dependencies": {
+            "koa": "^2.13.1",
+            "koa-body": "^4.2.0",
+            "koa-router": "^10.0.0",
+            "koa2-cors": "^2.0.6"
+        },
+        "devDependencies": {
+            "@types/koa": "^2.13.1",
+            "@types/koa-router": "^7.4.1",
+            "@types/koa2-cors": "^2.0.1",
+            "@types/node": "^14.14.37",
+            "@types/webpack": "^4.1.3",
+            "@types/webpack-env": "^1.13.6",
+            "@types/webpack-node-externals": "^2.5.1",
+            "clean-webpack-plugin": "^3.0.0",
+            "concurrently": "^5.3.0",
+            "copy-webpack-plugin": "^6.0.2",
+            "nodemon": "^2.0.7",
+            "ts-loader": "^4.2.0",
+            "ts-node": "^9.1.1",
+            "typescript": "^4.2.4",
+            "wait-on": "^5.2.1",
+            "webpack": "^4.5.0",
+            "webpack-bundle-analyzer": "^4.4.1",
+            "webpack-cli": "^3.3.6",
+            "webpack-node-externals": "^2.5.2"
+        }
+    }
+
+    const files = [
+        {
+            name: 'package.json',
+            describe: 'package.json配置文件',
+            path: [],
+            content: package_json,
+            pattern: 'json'
+        },
+        {
+            name: 'nodemon.json',
+            describe: 'nodemon配置文件',
+            path: [],
+            content: {
+                "watch": [
+                    "dist"
+                ],
+                "ignore": [
+                    "pm2log/"
+                ],
+                "ext": "js",
+                "verbose": true,
+                "exec": "pm2 start process.json"
+            },
+            pattern: 'json'
+        },
+        {
+            name: 'tsconfig.json',
+            describe: 'tsconfig配置文件',
+            path: [],
+            content: {
+                "compilerOptions": {
+                    // 为了node环境能直接运行
+                    "module": "commonjs",
+                    "noImplicitAny": true,
+                    "sourceMap": true,
+                    "moduleResolution": "node",
+                    "isolatedModules": true,
+                    "target": "es6",
+                    "strictNullChecks": true,
+                    "noUnusedLocals": true,
+                    "noUnusedParameters": true,
+                    "inlineSources": false,
+                    "lib": ["es2015"],
+                    "outDir": "./dist",
+                    "rootDir": "./",
+                    "removeComments": true,
+                    "strict": true,
+                    "baseUrl": "./",
+                    "esModuleInterop": true,
+                    "experimentalDecorators": true,
+                    "emitDecoratorMetadata": true,
+                    "skipLibCheck": true,
+                    "forceConsistentCasingInFileNames": true,
+                    "suppressImplicitAnyIndexErrors": true,
+                    "downlevelIteration": true,
+                    "paths": {
+                        "@/*": ["./*"]
+                    }
+                },
+                "exclude": [
+                    "node_modules",
+                    "**/*.spec.ts"
+                ]
+            },
+            pattern: 'json'
+        },
+        {
+            name: 'process.json',
+            describe: 'pm2配置文件',
+            path: [],
+            content: 
+`{
+    "apps": {
+        "name": "${userConfig.name}",
+        "script": "./dist/app.js",
+        "env": {
+            "lns_env": "development",
+            "PORT": 8977,
+            "MYSQL_DATABASE":"test"
+        },
+        "env_test": {
+            "lns_env": "test",
+            "PORT": 8977,
+            "MYSQL_DATABASE":"test"
+        },
+        "env_production": {
+            "lns_env": "production",
+            "PORT": 8977,
+            "MYSQL_DATABASE":"test"
+        },
+        "min_uptime": "60s",
+        "max_restarts": 30,
+        "exec_mode": "cluster_mode",
+        "log_date_format": "YYYY-MM-DD HH:mm:ss",
+        "error_file": "./pm2log/pm2-err.log",
+        "out_file": "./pm2log/pm2-out.log",
+        "pid_file": "./pm2log/pm2.pid"
+    }
+}`,
+            pattern: 'text'
+        },
+        {
+            name: 'Webpack.config.ts',
+            describe: 'webpack配置文件',
+            path: [],
+            content: 
+`import * as path from 'path';
+import * as webpack from 'webpack';
+import {Configuration} from 'webpack';
+const {CleanWebpackPlugin} = require('clean-webpack-plugin');
+const CopyPlugin = require('copy-webpack-plugin');
+const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
+
+class WebpackConfig implements Configuration {
+    // node环境
+    target: Configuration['target'] = "node";
+    // 默认为发布环境
+    mode: Configuration['mode'] = 'production';
+    // 入口文件
+    entry = {
+        app: path.resolve(__dirname, './index.ts')
+    };
+    output = {
+        path: path.resolve(__dirname, './dist'),
+        filename: "[name].js"
+    };
+    devtool: any = 'inline-source-map';
+    module = {
+        rules: [
+            {
+                test: /\.tsx?$/,
+                use: [
+                    {
+                        loader: 'ts-loader',
+                        options: {
+                            // 加快编译速度
+                            transpileOnly: true,
+                            // 指定特定的ts编译配置，为了区分脚本的ts配置
+                            configFile: path.resolve(__dirname, './tsconfig.json')
+                        }
+                    }
+                ],
+                exclude: /node_modules/
+            }
+        ]
+    };
+    // 为了解决mysql打包后调用报错：Error: Received packet in the wrong sequence
+    optimization = {
+        minimize: false
+    };
+    resolve = {
+        extensions: [".ts", ".js", ".json"],
+        alias: {
+            '@': path.resolve('')
+        }
+    };
+    // externals = ['pg', 'mysql2', 'sqlite3', 'tedious', 'pg-hstore'];
+    plugins = [
+        new CleanWebpackPlugin({
+            cleanOnceBeforeBuildPatterns: ['**/*', path.resolve(__dirname, './dist')],
+        }),
+        new webpack.NoEmitOnErrorsPlugin(),
+        new webpack.IgnorePlugin(/^\\.\\/locale$/, /moment$/),
+        new webpack.WatchIgnorePlugin(['public']),
+        //  为了解决打包时koa-body -> formidable依赖包中 if (global.GENTLY) require = GENTLY.hijack(require); global.GENTLY导致的require方法被覆盖报错
+        new webpack.DefinePlugin({ "global.GENTLY": false }),
+    ];
+    constructor(mode: Configuration['mode']) {
+        this.mode = mode;
+        if (mode === 'development') {
+            // 设置打包mode未development
+            this.mode = 'development';
+        }
+
+        if (mode === 'production') {
+            const proPlugins = [
+                new CopyPlugin({
+                    patterns: [
+                        { from: path.resolve(__dirname, './process.json'), to: './' }, // 将./下的文件process.json copy到dist/目录下
+                    ],
+                }),
+                new BundleAnalyzerPlugin({ 
+                    analyzerPort: 8619,
+                    analyzerMode: 'static'
+                 })
+            ]
+            this.plugins.push(...proPlugins);
+        }
+    }
+}
+
+export default WebpackConfig;`,
+            pattern: 'text'
+        },
+        {
+            name: 'index.ts',
+            describe: '工程入口文件',
+            path: [],
+            content: 
+`require('@/modules/mandatory/polyfill');
+import { HttpStarter } from '@/starter/httpStarter';
+${userConfig.schedule ? "import { ScheduleJob } from '@/modules/optional/schedule';" : ""}
+${userConfig.mysql ? "import { Mysql } from '@/modules/optional/mysql';" : ""}
+
+console.log('nodeService', '当前环境变量', {
+    '服务名：': process.env.name,
+    '数据库：': process.env.MYSQL_DATABASE,
+    '端口：': process.env.PORT,
+    '环境变量：': process.env.lns_env
+});
+
+new HttpStarter();
+
+${userConfig.schedule ? "// 开启定时任务" : ""}
+${userConfig.schedule ? "ScheduleJob.startSchedule();" : ""}
+
+${userConfig.mysql ? "// 初始化数据库连接池" : ''}
+${userConfig.mysql ? "Mysql.init([process.env.MYSQL_DATABASE]);" : ""}
+            `,
+            pattern: 'text'
+        },
+        {
+            name: 'httpStarter.ts',
+            describe: 'node服务启动文件',
+            path: ['starter'],
+            content: `
+import Koa from 'koa';
+import router from 'koa-router';
+import koaBody from 'koa-body';
+import cors from 'koa2-cors';
+${userConfig.exportFile ? "import xlsx from 'node-xlsx';" : ""}
+
+
+import { SystemService } from '@/config/config';
+import { ResponseResult } from '@/modules/mandatory/utils';
+import { Distributer } from '@/modules/mandatory/distributer';
+import { UUID } from '@/modules/mandatory/utils';
+${userConfig.exportFile ? "import { exportFile } from '@/modules/optional/exportFile';" : ""}
+${userConfig.parseXlsx ? "import { parseXlsx } from '@/modules/optional/parseXlsx';" : ''}
+${userConfig.uploadFile ? "import { uploadFile } from '@/modules/optional/uploadFile';" : ''}
+${userConfig.uploadFile ? "const maxFileSize = 50 * 1024 * 1024;  //  上传文件最大值" : ''}
+
+class HttpStarter {
+    app: Koa;   //  http服务实例
+    router: router; //  koa-router实例
+    distributer: Distributer;   //  请求分发器
+    constructor() {
+        this.app = new Koa();
+        this.router = new router();
+        this.distributer = new Distributer();
+        // 处理跨域
+        this.app.use(cors({
+            origin: function (_ctx) {
+                return '*';
+            },
+            maxAge: 5, //指定本次预检请求的有效期，单位为秒。
+            credentials: true, //是否允许发送Cookie
+            allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], //设置所允许的HTTP请求方法
+            allowHeaders: ['Content-Type', 'Authorization', 'Accept'], //设置服务器支持的所有头信息字段
+            exposeHeaders: ['WWW-Authenticate', 'Server-Authorization'] //设置获取其他自定义字段
+        }));
+
+        // 接收所有request
+        this.app.use(async (ctx, next) => {
+            if (ctx.url === '/favicon.ico') return;
+            await next();
+            // console.log(ctx.request.ip);
+            ctx.response.type = 'application/json';
+        });
+
+        this.app.use(koaBody());
+        
+        // api接口地址
+        this.router.post('/', async (ctx, _next) => {
+            const requestJson = ctx.request.body;
+            const uuid = UUID();
+            console.log(SystemService.koaService, '请求ID：' + uuid + '  请求参数 ', requestJson);
+            // 检查当前环境中是否有相应服务和方法
+            await this.distributer.work(requestJson).then(
+                (res) => {
+                    console.log(SystemService.koaService, '请求ID：' + uuid + '  请求结果', res);
+                    // 返回信息
+                    ctx.response.body = res;
+                }
+            ).catch((error) => {
+                // 输出API请求报错
+                console.error(SystemService.koaService, '请求ID：' + uuid + '  请求出错', requestJson, error);
+                // 返回信息
+                ctx.response.body = error;
+            });
+            // console.log('请求参数', ctx);
+
+        });
+            ` + (userConfig.uploadFile ? `
+    
+        /**
+         * 处理文件上传请求
+         * 因为全局使用会和bodyparse中间件冲突
+         */
+            uploadFile.init();
+            this.router.post('/upload', koaBody({
+            multipart: true,
+            // json: false,
+            formidable: {
+                maxFileSize: maxFileSize
+            }
+        }), async (ctx, _next) => {
+            const tempFile = <any>ctx.request.files;
+            await uploadFile.work(ctx.request.body, tempFile).then(
+                (res) => {
+                    ctx.response.body = ResponseResult.SUCCESS('文件上传成功', res);
+                }
+            ).catch(
+                (error) => {
+                    console.error(SystemService.uploadFileService, ' 上传文件服务错误 ', error);
+                    // 返回信息
+                    ctx.response.body = ResponseResult.ERROR_UNKNOWN('文件上传失败', null, '上传文件服务失败');
+                }
+            );
+        });
+            ` : '') + (userConfig.parseXlsx ? `
+    
+        // 接收excel文件并解析 - 未保存
+        this.router.post('/parsexlsx', koaBody({
+            multipart: true,
+            formidable: {
+                maxFileSize: maxFileSize
+            }
+        }), async (ctx, _next) => {
+            const tempFile = <any>ctx.request.files;
+            const uuid = UUID();
+            console.log(SystemService.parseFileService, '请求ID：' + uuid ,'解析文件请求', ctx.request.body, tempFile);
+            parseXlsx.work(ctx.request.body, tempFile).then(
+                (res) => {
+                    const result = ResponseResult.SUCCESS('success', res);
+                    console.log(SystemService.parseFileService, '请求ID：' + uuid ,'解析文件结果', result);
+                    ctx.response.body = result;
+                },
+                (err) => {
+                    console.error(SystemService.parseFileService, '请求ID：' + uuid ,'解析文件失败', err);
+                    ctx.response.body = ResponseResult.ERROR_UNKNOWN('读取文件失败');
+                }
+            )
+        });
+            ` : '') + (userConfig.exportFile ? `
+    
+        // 接收导出文件请求 可以使用表单请求该接口
+        this.router.post('/exportfile', async (ctx, _next) => {
+            exportFile.worker(ctx.request.body).then(
+                (res: any) => {
+                    if (res.code === '0000') {
+                        // 直接下载文件
+                        const file = xlsx.build([{
+                            name: res.data.name,
+                            data: res.data.data
+                        }]);
+                        ctx.response.set('Content-Type', 'application/vnd.openxmlformats')
+                        ctx.response.set("Content-Disposition", "attachment; filename=" + encodeURIComponent(res.data.name))
+                        ctx.response.body = file;
+                    } else {
+                        console.error(SystemService.parseFileService, '文件导出失败', res);
+                        ctx.response.body = ResponseResult.ERROR('文件导出失败', res);
+                    }
+                }
+            ).catch((error) => {
+                console.error(SystemService.parseFileService, '文件导出失败', error);
+                ctx.response.body = ResponseResult.ERROR('文件导出失败');
+            })
+        });
+            ` : '') + `
+            
+        this.app.use(this.router.routes()).use(this.router.allowedMethods());
+ 
+        this.app.listen(process.env.PORT);
+        console.log(SystemService.koaService, 'koa服务正常启动，监听端口' + process.env.PORT);
+    }
+}
+
+export {
+    HttpStarter
+}`,
+            pattern: 'text'
+        },
+        {
+            name: 'types.ts',
+            describe: '通用类型文件',
+            path: ['types'],
+            content: 
+`/**
+ * node服务配置
+ */
+    interface Config {
+    logClass: string;   //  log - 开发   info - 运行输出  silent - 禁止输出日志
+    db_mysql: any;                 //  mysql数据库配置
+}
+
+/**
+ * 单个数据库配置格式
+ */
+interface dbConfig {
+    host: string,
+    port: string,
+    user: string,
+    password: string
+}
+
+export type {
+    Config,
+    dbConfig
+}`,
+            pattern: 'text'
+        },
+        {
+            name: 'start-dev.ts',
+            describe: '开发环境启动服务文件',
+            path: ['scripts'],
+            content: 
+`import webpack from 'webpack';
+import WebpackConfig from '../Webpack.config';
+
+const devConfig = new WebpackConfig('development');
+// 通过watch来实时编译
+webpack(devConfig).watch({
+    aggregateTimeout: 300,
+    poll: 1000
+}, (_err: Error, stats: any) => {
+    if (stats.compilation.errors && stats.compilation.errors.length) {
+        console.log('webpack编译报错', stats.compilation.errors);
+    }
+});`,
+            pattern: 'text'
+        },
+        {
+            name: 'build.ts',
+            describe: '生产环境打包文件',
+            path: ['scripts'],
+            content: 
+`import webpack from 'webpack';
+import WebpackConfig from '../Webpack.config';
+const buildConfig = new WebpackConfig('production');
+
+webpack(buildConfig).run((_err: Error, stats: any) => {
+    if (stats.compilation.errors && stats.compilation.errors.length) {
+        console.log('webpack编译报错', stats.compilation.errors);
+    }
+});`,
+            pattern: 'text'
+        },
+        {
+            name: 'distributer.ts',
+            describe: '服务分发文件',
+            path: ['modules', 'mandatory'],
+            content: 
+`import { ResponseResult } from './utils';
+import { SystemService } from '@/config/config';
+import { service } from '@/services/service';
+
+
+class Distributer {
+    // 分发请求到对应服务
+    public work(data: { FN: string, param: any[] }) {
+        return new Promise((resolve, reject) => {
+            // 检查请求参数 - 如果没有FN则反馈传参错误
+            if (!data.FN) {
+                console.error(SystemService.distributerService, '请求参数不全', data);
+                reject(ResponseResult.ERROR_PARAM('调用失败', data, '请求参数不全'));
+            }
+
+            // 判断服务是否正常加载
+            if (service && data.FN && (service[data.FN])) {
+                resolve(service[data.FN](...data.param));
+            } else {
+                console.error(SystemService.distributerService, '系统未能正确加载服务或方法');
+                reject(ResponseResult.ERROR_PARAM('', data, '系统未能正确加载服务或方法'));
+            }
+        }).catch(
+            (error) => {
+                console.error(SystemService.distributerService, '系统错误', error);
+                return error;
+            }
+        )
+    }
+}
+
+export {
+    Distributer
+}`,
+            pattern: 'text'
+        },
+        {
+            name: 'polyfill.ts',
+            describe: 'console方法重写文件',
+            path: ['modules', 'mandatory'],
+            content: 
+`import { config, SystemService } from '../../config/config';
+(function(){
+    var _log = console.log;
+    function switcher(param: any[]): {
+        identifier: string,
+        param: any[]
+    } {
+        let identifier = '';
+        switch (param[0]) {
+            case SystemService.nodeService:
+                identifier = '  - - node启动器模块 - - ';
+                param.shift();
+                break;
+            case SystemService.koaService:
+                identifier = '  - - koa模块 - - - - -  ';
+                param.shift();
+                break;
+            case SystemService.distributerService:
+                identifier = '  - - 服务分发器 - - - - ';
+                param.shift();
+                break;
+            case SystemService.mysqlService:
+                identifier = '  - - mysql模块 - - - -  ';
+                param.shift();
+                break;
+            case SystemService.saveFileService:
+                identifier = '  - - 保存文件模块 - - -  ';
+                param.shift();
+                break;
+            case SystemService.uploadFileService:
+                identifier = '  - - 文件上传模块 - - -  ';
+                param.shift();
+                break;
+            case SystemService.parseFileService:
+                identifier = '  - - 解析excel模块 - -  ';
+                param.shift();
+                break;
+            case SystemService.exportFileService:
+                identifier = '  - - 文件导出模块 - - -  ';
+                param.shift();
+                break;
+            case SystemService.scheduleService:
+                identifier = '  - - 定时任务模块 - - - ';
+                param.shift();
+                break;
+            default:
+                break;
+        }
+
+        return {
+            identifier,
+            param
+        }
+    }
+    
+    console.log = function(..._args: any[]){
+        if (config.logClass !== 'log') {
+            return;
+        }
+        let param = [...arguments];
+        const result = switcher(param);
+        _log.call(console, result.identifier, ...result.param);
+    };
+
+    console.info = function(..._args: any[]){
+        if (config.logClass === 'silent') {
+            return;
+        }
+        let param = [...arguments];
+        const result = switcher(param);
+        _log.call(console, result.identifier, ...result.param);
+    };
+
+    console.warn = function(..._args: any[]){
+        if (config.logClass === 'silent') {
+            return;
+        }
+        let param = [...arguments];
+        const result = switcher(param);
+        _log.call(console, ' !!!警告!!! ', result.identifier, ...result.param);
+    };
+
+    console.error = function(..._args: any[]){
+        if (config.logClass === 'silent') {
+            return;
+        }
+        let param = [...arguments];
+        const result = switcher(param);
+        _log.call(console, ' ###错误### ', result.identifier, ...result.param);
+    };
+    
+    })();`,
+            pattern: 'text'
+        },
+        {
+            name: 'utils.ts',
+            describe: '工具文件',
+            path: ['modules', 'mandatory'],
+            content: 
+`import axios from 'axios';
+
+/**
+ * =======>响应参数<=======
+ * code：   响应状态码
+ * msg：    展示信息
+ * data：   响应数据
+ * process：提示信息 
+ */
+    const ResponseResult = {
+    SUCCESS: (msg?: string, data?: any, process?: string) => {
+        return { code: '0000', msg: msg || '操作成功', data: data || <any>null, process: process || '' };
+    },
+    ERROR: (msg?: string, data?: any, process?: string) => {
+        return { code: '0001', msg: msg || '操作失败', data: data || <any>null, process: process || '' };
+    },
+    ERROR_UNKNOWN: (msg?: string, data?: any, process?: string) => {
+        return { code: '0002', msg: msg || '未知错误', data: data || <any>null, process: process || '' };
+    },
+    PARAM_NULL: (msg?: string, data?: any, process?: string) => {
+        return { code: '0010', msg: msg || '参数为空', data: data || <any>null, process: process || '' };
+    },
+    ERROR_PARAM: (msg?: string, data?: any, process?: string) => {
+        return { code: '0011', msg: msg || '参数错误', data: data || <any>null, process: process || '' };
+    },
+    EPMPTY_RESULT: (msg?: string, data?: any, process?: string) => {
+        return { code: '0020', msg: msg || '结果为空', data: data || <any>null, process: process || '' };
+    },
+    ERROR_RESULT: (msg?: string, data?: any, process?: string) => {
+        return { code: '0021', msg: msg || '获取结果错误', data: data || <any>null, process: process || '' };
+    },
+}
+
+
+const commonAxios = (url: string, params: any, headers: any = {}, method: string = 'get') => {
+    return new Promise((resolve, reject) => {
+        if (method === 'get') {
+            axios.get(url, {params, headers}).then(
+                (res) => {
+                    resolve(res.data);
+                },
+                (err) => {
+                    reject(err);
+                }
+            ).catch((error) => {
+                reject(error);
+            })
+        } else {
+            axios.post(url, params, {headers}).then(
+                (res) => {
+                    resolve(res.data);
+                },
+                (err) => {
+                    reject(err);
+                }
+            ).catch((error) => {
+                reject(error);
+            })
+        }
+    });
+    
+}
+
+// uuid
+const UUID = () => {
+    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
+    const uuid = [];
+    const len = 5;
+    let i;
+    const radix = chars.length;
+    if (len) {
+        // Compact form
+        for (i = 0; i < len; i++) {
+            // tslint:disable-next-line: no-bitwise
+            uuid[i] = chars[0 | Math.random() * radix]
+        }
+    } else {
+        // rfc4122, version 4 form
+        let r;
+        // rfc4122 requires these characters
+        uuid[9] = uuid[13] = uuid[19] = uuid[23] = '-';
+        uuid[14] = '4';
+        // Fill in random data.  At i==19 set the high bits of clock sequence as
+        // per rfc4122, sec. 4.1.5
+        for (i = 0; i < 36; i++) {
+            if (!uuid[i]) {
+                // tslint:disable-next-line: no-bitwise
+                r = 0 | Math.random() * 16;
+                // tslint:disable-next-line: no-bitwise
+                uuid[i] = chars[(i === 19) ? (r & 0x3) | 0x8 : r];
+            }
+        }
+    }
+    // const ti = new Date();
+    return new Date().getTime() + '|' + uuid.join('');
+}
+
+
+export {
+    ResponseResult,
+    commonAxios,
+    UUID
+}`,
+            pattern: 'text'
+        },
+        {
+            name: 'config.ts',
+            describe: '工程配置文件',
+            path: ['config'],
+            content: 
+`import { Config, dbConfig } from '../types/types'
+
+
+// node基础服务类型
+enum SystemService {
+    nodeService = 'nodeService',        //  node根服务
+    koaService = 'koaService',          //  koa服务
+    distributerService = 'distributerService', //  分发服务
+    mysqlService = 'mysqlService',       //  mysql服务
+    saveFileService = 'saveFileService',    //  写文件服务(流)
+    uploadFileService = 'uploadFileService', //  文件上传服务
+    parseFileService = 'parseFileService',  //  解析excel文件服务
+    exportFileService = 'exportFileService', //  文件导出服务
+    scheduleService = 'scheduleService',   //  定时任务服务
+}
+
+// 本地开发环境
+let config_development: Config = {
+    logClass: 'log',
+    db_mysql: {
+        test: <dbConfig>{
+            host: '127.0.0.1',
+            port: '3306',
+            user: 'root',
+            password: 'root',
+            dialect: 'mysql'
+        }
+    }
+}
+
+// 准生产环境
+let config_test: Config = {
+    logClass: 'log',
+    db_mysql: {
+        test: <dbConfig>{
+            host: '127.0.0.1',
+            port: '3306',
+            user: 'root',
+            password: 'root',
+            dialect: 'mysql'
+        }
+    }
+}
+
+// 生产环境
+let config_production: Config = {
+    logClass: 'info',
+    db_mysql: {
+        test: <dbConfig>{
+            host: '127.0.0.1',
+            port: '3306',
+            user: 'root',
+            password: 'root',
+            dialect: 'mysql'
+        }
+    }
+}
+
+function exportConfig(env: string) {
+    let config = config_development;
+    switch (env) {
+        case 'test':
+            config =  config_test;
+            break;
+        case 'production':
+            config =  config_production;
+            break;
+        case 'development':
+        default:
+            break;
+    }
+    return config;
+}
+
+const config: Config = exportConfig(process.env.lns_env as string);
+
+export {
+    config,
+    SystemService
+}`,
+            pattern: 'text'
+        },
+        {
+            name: 'service.ts',
+            describe: 'node服务文件',
+            path: ['services'],
+            content: 
+`import { ResponseResult } from '@/modules/mandatory/utils';
+import { Server } from './service.api';
+
+class Service implements Server {
+    static instance: Service;
+    static getIns(): Service {
+        if (!Service.instance) {
+            Service.instance = new Service();
+        }
+        return Service.instance;
+    }
+
+    /**
+     * 测试服务是否正常运行
+     * @param name 测试name
+     * @param age 测试age
+     * @returns 
+     */
+    async test(name: string, age: number) {
+        return ResponseResult.SUCCESS('The service is running successfully', {name, age});
+    }
+}
+
+const service: Service = Service.getIns();
+export {
+    service
+}`,
+            pattern: 'text'
+        },
+        {
+            name: 'unicall.ts',
+            describe: '通用请求文件',
+            path: ['services'],
+            content: 
+`// @ts-ignore
+import axios from 'axios';
+
+/**
+ * @env 请求地址 development | test | production   node本地开发时直接require本地方法调用，如果给前端使用，则需要使用axios去调用远程接口
+ */
+ const config = {
+    env: 'development'
+}
+
+const services = {
+    development: {
+        ${userConfig.name}: {
+            address: 'http://127.0.0.1:8977/'
+        }
+    },
+    test: {
+        ${userConfig.name}: {
+            address: ''
+        }
+    },
+    production: {
+        ${userConfig.name}: {
+            address: ''
+        }
+    },
+
+}
+
+/**
+ * =======>响应结果<=======
+ * code：   响应状态码
+ * msg：    展示信息
+ * data：   响应数据
+ * process：提示信息 
+ */
+ const ResponseResult = {
+    SUCCESS: (msg?: string, data?: any, process?: string) => {
+        return { code: '0000', msg: msg || '操作成功', data: data || <any>null, process: process || '' };
+    },
+    ERROR: (msg?: string, data?: any, process?: string) => {
+        return { code: '0001', msg: msg || '操作失败', data: data || <any>null, process: process || '' };
+    },
+    ERROR_UNKNOWN: (msg?: string, data?: any, process?: string) => {
+        return { code: '0002', msg: msg || '未知错误', data: data || <any>null, process: process || '' };
+    },
+    PARAM_NULL: (msg?: string, data?: any, process?: string) => {
+        return { code: '0010', msg: msg || '参数为空', data: data || <any>null, process: process || '' };
+    },
+    ERROR_PARAM: (msg?: string, data?: any, process?: string) => {
+        return { code: '0011', msg: msg || '参数错误', data: data || <any>null, process: process || '' };
+    },
+    EPMPTY_RESULT: (msg?: string, data?: any, process?: string) => {
+        return { code: '0020', msg: msg || '结果为空', data: data || <any>null, process: process || '' };
+    },
+    ERROR_RESULT: (msg?: string, data?: any, process?: string) => {
+        return { code: '0021', msg: msg || '获取结果错误', data: data || <any>null, process: process || '' };
+    },
+}
+
+// 响应结果模型
+interface UniValue {
+    code: string,
+    msg: string,
+    data: any,
+    process: string
+}
+
+
+
+/********************** 后续开发使用以下新版本方法 20210407 *************************/
+
+/**
+ * 
+ * @param data 用户请求参数
+ * @param address 用户自定义的请求地址
+ * @returns 
+ */
+const UnionCall = function(data: { SN: string, FN: string, param: any[] }, address?: string) {
+    return new Promise((resolve, reject) => {
+        // 确定当前请求地址
+        const uri = (services[config.env] && services[config.env][data.SN] && services[config.env][data.SN].address) || '';
+        if (!uri && !address) {
+            console.error('无法确定当前请求地址，请检查输入参数', {data, address});
+            reject(new Error('无法确定当前请求地址，请检查输入参数'));
+        }
+        axios.post(uri || address,
+            {
+                FN: data.FN,
+                param: data.param
+            }
+        ).then(
+            (res) => {
+                resolve(res.data);
+            },
+            (err) => {
+                reject(err);
+            }
+        ).catch((error) => {
+            reject(error);
+        })
+    });
+}
+
+
+
+
+/**
+ * 实现具体的接口请求逻辑，同时可以校验用户输入防注入 - 前端使用
+ * @param paramIndex 参数防注入校验序列 如：[0, 2]则校验第一和第三个参数是否合法
+ * @returns 
+ */
+function extendMethod(paramIndex: number[] = []) {
+    return function(target: any, key: string, descriptor: any) {
+        descriptor.value = function(..._args: any[]) {
+            const param = <any>[];
+            for (let item in arguments) {
+                param.push(arguments[item]);
+            }
+            return new Promise((resolve, _reject) => {
+                // 校验开始 - 暂时只校验字符和数字型参数
+                let text = '';
+                for (let i=0;i<paramIndex.length;i++) {
+                    const index = Math.abs(Math.floor(paramIndex[i]));
+                    if (index < param.length && ((typeof param[index] === 'string') || (typeof param[index] === 'number'))) {
+                        text += param[index];
+                    }
+                }
+                const result = /[\`~!@#$%^&*_+?:;",.\/;']/.test(text);
+                if (result) {
+                    resolve(ResponseResult.ERROR_PARAM('参数防注入校验失败，取消请求', param));
+                }
+                // 校验结束 - 校验模块可拆掉
+                resolve(UnionCall({
+                    SN: target.nameSelf(),
+                    FN: key,
+                    // @ts-ignore
+                    param
+                }));
+            });
+        }
+        return descriptor;
+    }
+}
+
+/**
+ * 输出自己的服务名称
+ * @returns 返回服务名
+ */
+function nameSelf(ServiceName: string) {
+    return function(target: Function) {
+        target.prototype.nameSelf = function(){
+            return ServiceName;
+        }
+    }
+}
+
+export {
+    UnionCall,
+    ResponseResult,
+    extendMethod,
+    nameSelf
+};
+export type {
+    UniValue
+};
+
+`,
+            pattern: 'text'
+        },
+        {
+            name: 'service.api.ts',
+            describe: '前端使用文件',
+            path: ['services'],
+            content: 
+`import { extendMethod, nameSelf } from './unicall';
+
+interface Server {
+    test(name: string, age: number): any;
+}
+
+@nameSelf('${userConfig.name}')
+class ServiceApi implements Server{
+    static instance: ServiceApi;
+    static getIns() {
+        if (!ServiceApi.instance) {
+            ServiceApi.instance = new ServiceApi();
+        }
+        return ServiceApi.instance;
+    }
+
+    /**
+     * 测试服务是否正常运行
+     * @returns 
+     */
+    @extendMethod()
+    async test(_name: string, _age: number) {}
+
+}
+
+const serviceApi = ServiceApi.getIns();
+
+export {
+    serviceApi
+};
+export type { Server };
+`,
+            pattern: 'text'
+        },
+        {
+            name: 'build.sh',
+            describe: '打包脚本文件',
+            path: ['shell'],
+            content: 
+`#!/bin/sh
+
+set -o errexit
+
+sed -i "" "s/\"script\"\:\ \"\.\/dist\/app\.js\"/\"script\"\:\ \"\.\/app.js\"/g" dist/process.json`,
+            pattern: 'text'
+        },
+        {
+            name: 'reademe.md',
+            describe: 'readme文件',
+            path: [],
+            content: 
+`
+<h1 align="center">
+	light-node-serv
+	<br>
+</h1>
+
+# 快速开始
+
+### 简介
+
+使用此框架可以快速搭建一套可用的node服务，带有可选装模块如mysql、导出xlsx文件、解析xlsx文件、文件上传、定时任务等。
+
+### 安装
+
+1. npm install light-node-serv
+2. 在命令行执行 light-node-serv single -p your-project-name
+3. 根据需要选装不同的模块
+
+
+### 启动
+
+1. 在新建的工程根目录下执行 yarn dev 或 npm run dev，可在本地运行node服务，默认端口8977，在修改代码后会自动编译运行。
+2. 服务启动后，可向http://127.0.0.1:8977发起post请求，结果如下
+    请求参数：
+    \`\`\`
+    // 请求参数
+    {
+        "FN": "test",
+        "param": ["tom", 18]
+    }
+
+    // 请求结果
+    {
+        "code": "0000",
+        "msg": "The service is running successfully",
+        "data": {
+            "name": "tom",
+            "age": 18
+        },
+        "process": ""
+    }
+    \`\`\`
+3. 服务启动后在工程目录会自动创建pm2log文件夹，包含pm2-err-\*.log和pm2-out-\*.log，报错输出在err日志，用户自定义console输出在out日志，建议开发中使用tail -f pm2-out-\*.log来监控日志查看调试输出
+
+### 打包
+
+* 在根目录下执行yarn build 或 npm run build，将生成dist文件夹，包含app.js、process.json和report.html文件，其中report.html文件是打包分析文件(可删除)，其他两个文件为业务功能文件，使用pm2 start process.json可运行打包后的服务。
+
+### 日志
+
+* 框架需要使用pm2-logrotate来管理日志输出，安装命令：pm2 install pm2-logrotate@2.2.0
+
+# 模块解析
+
+### distributer.ts
+
+* 这是分发请求的模块，在单服务文件模式下(single)，该模块将所有请求转发到/services/service.ts服务中。在多服务模式下(multiple)，根据请求中的SN转发到不同的服务中
+
+
+### polyfill.ts
+
+* 该文件是补丁程序，主要重写了console方法，加入了输出控制及标记
+
+
+### utils.ts
+
+* 定义了通用返回值模型，请求方法和uuid方法
+
+
+### mysql.ts
+
+* 数据库操作模块，自动创建连接池，提供执行普通sql和事务的方法
+  * index.ts
+    \`\`\`
+    // 初始化数据库连接池
+    Mysql.init([process.env.MYSQL_DATABASE]);   //  此处使用process.json中配置的数据库
+    \`\`\`
+  * service.ts
+    \`\`\`
+    import { Mysql } from '@/modules/optional/mysql';
+    import { PoolConnection } from 'mysql';
+
+    // 普通sql查询
+    async testSql(_name: string, _age: number) {
+        const query_sql = 'select * from your-table where 1';
+        var query_result: any = await Mysql.doSql(<string>process.env.MYSQL_DATABASE, query_sql).catch((err) => {
+            return err;
+        });
+        
+        if (query_result.err) {
+            return ResponseResult.ERROR('查询报错');
+        }
+        return ResponseResult.SUCCESS('查询成功', query_result.data);
+    }
+
+    // 事务操作
+    async testTransaction() {
+        const r1 = Math.ceil(Math.random() * 10);
+        const sql1 = \`insert into school(school_id, school_name) values("id-\${r1}", "name-\${r1}")\`;
+        const sql2 = \`insert into student(name, age, school_id) value("sname-\${r1}", "\${r1}", "id-\${r1}")\`;
+
+        const connections: PoolConnection[] = [];
+        try {
+            const result1: any = await Mysql.doTransaction(<string>process.env.MYSQL_DATABASE, sql1);
+            if (result1.err) {
+                throw new Error('sql1执行失败，回滚');
+            } else {
+                connections.push(<PoolConnection>result1.instance);
+            }
+
+            const result2: any = await Mysql.doTransaction(<string>process.env.MYSQL_DATABASE, sql2);
+            if (result2.err) {
+                throw new Error('sql2执行失败，回滚');
+            } else {
+                connections.push(<PoolConnection>result2.instance);
+            }
+
+            // 提交
+            const commitResult = await Mysql.transaCommit(connections);
+            return ResponseResult.SUCCESS('事务执行成功', commitResult);
+
+        } catch (error) {
+            Mysql.transaRollback(connections);
+            return ResponseResult.ERROR('事务执行失败');
+        }
+    }
+    \`\`\`
+
+
+### exportFile.ts
+
+* 目前提供数据以xlsx文档导出，请求地址http://127.0.0.1:8977/exportfile，参数{"order": "e1"}，这里的order参数可以自定义，前后端约定好可以互相识别意图就OK
+  * httpStarter.ts
+    \`\`\`
+    import xlsx from 'node-xlsx';
+    import { exportFile } from '@/modules/optional/exportFile';
+
+    // 接收导出文件请求 可以使用表单请求该接口
+    this.router.post('/exportfile', async (ctx, _next) => {
+        exportFile.worker(ctx.request.body).then(
+            (res: any) => {
+                if (res.code === '0000') {
+                    // 直接下载文件
+                    const file = xlsx.build([{
+                        name: res.data.name,
+                        data: res.data.data
+                    }]);
+                    ctx.response.set('Content-Type', 'application/vnd.openxmlformats')
+                    ctx.response.set("Content-Disposition", "attachment; filename=" + encodeURIComponent(res.data.name))
+                    ctx.response.body = file;
+                } else {
+                    console.error(SystemService.parseFileService, '文件导出失败', res);
+                    ctx.response.body = ResponseResult.ERROR('文件导出失败', res);
+                }
+            }
+        ).catch((error) => {
+            console.error(SystemService.parseFileService, '文件导出失败', error);
+            ctx.response.body = ResponseResult.ERROR('文件导出失败');
+        })
+    });
+    \`\`\`
+
+### parseXlsx.ts
+
+* 解析xlsx文件模块，请求地址http://127.0.0.1:8977/parsexlsx，参数{"order": "p1"}，这里的order参数可以自定义，前后端约定好可以互相识别意图就OK
+  * httpStarter.ts
+    \`\`\`
+    // 接收excel文件并解析 - 未保存
+    this.router.post('/parsexlsx', koaBody({
+        multipart: true,
+        formidable: {
+            maxFileSize: maxFileSize
+        }
+    }), async (ctx, _next) => {
+        const tempFile = <any>ctx.request.files;
+        const uuid = UUID();
+        console.log(SystemService.parseFileService, '请求ID：' + uuid ,'解析文件请求', ctx.request.body, tempFile);
+        parseXlsx.work(ctx.request.body, tempFile).then(
+            (res) => {
+                const result = ResponseResult.SUCCESS('success', res);
+                console.log(SystemService.parseFileService, '请求ID：' + uuid ,'解析文件结果', result);
+                ctx.response.body = result;
+            },
+            (err) => {
+                console.error(SystemService.parseFileService, '请求ID：' + uuid ,'解析文件失败', err);
+                ctx.response.body = ResponseResult.ERROR_UNKNOWN('读取文件失败');
+            }
+        )
+    });
+    \`\`\`
+
+
+### uploadFile.ts
+
+* 接收文件上传模块，上传目录默认是/public/upload/，请求地址http://127.0.0.1:8977/upload
+  * httpStarter.ts
+    \`\`\`
+    /**
+    * 处理文件上传请求
+    * 因为全局使用会和bodyparse中间件冲突
+    */
+        uploadFile.init();  // 创建public/upload目录
+        this.router.post('/upload', koaBody({
+        multipart: true,
+        // json: false,
+        formidable: {
+            maxFileSize: maxFileSize
+        }
+    }), async (ctx, _next) => {
+        const tempFile = <any>ctx.request.files;
+        await uploadFile.work(ctx.request.body, tempFile).then(
+            (res) => {
+                ctx.response.body = ResponseResult.SUCCESS('文件上传成功', res);
+            }
+        ).catch(
+            (error) => {
+                console.error(SystemService.uploadFileService, ' 上传文件服务错误 ', error);
+                // 返回信息
+                ctx.response.body = ResponseResult.ERROR_UNKNOWN('文件上传失败', null, '上传文件服务失败');
+            }
+        );
+    });
+    \`\`\`
+
+### schedule.ts
+
+* 执行定时任务模块，定时使用node-schedule模块
+  * index.ts
+    \`\`\`
+    // 开启定时任务
+    ScheduleJob.startSchedule();
+    \`\`\`
+
+# 其他
+
+### Contributors（In no particular order）
+
+* Luxiandong
+* Yangfengming
+
+`,
+            pattern: 'text'
+        }
+    ];
+
+    if (userConfig.exportFile) {
+        package_json.dependencies['node-xlsx'] = '^0.16.1';
+        package_json.devDependencies['@types/node-xlsx'] = '^0.15.1';
+        files.push({
+            name: 'exportFile.ts',
+            describe: '导出文件模块',
+            path: ['modules', 'optional'],
+            content: 
+`import { ResponseResult } from '@/modules/mandatory/utils';
+import { SystemService } from '@/config/config';
+
+enum exportFileType {
+    export1 = 'e1'  //  前后端约定一个ID对应一种数据导出行为，如e1代表导出某公司用户
+}
+
+const exportFile = {
+    async worker(param: any = {}) {
+        console.log(SystemService.exportFileService, '接收到导出文件请求', param);
+        return new Promise((resolve, reject) => {
+            try {
+                switch (param.order) {
+                    case exportFileType.export1:
+                        const result = this.export1(param);
+                        resolve(result);
+                        break;
+                    default:
+                        console.log(SystemService.exportFileService, '无法识别指令', param);
+                        reject('无法识别指令');
+                        break;
+                }
+            } catch (error) {
+                reject();
+            }
+        });
+    },
+
+    // 例如 导出数据
+    export1(_param: any) {
+        // 此处可以执行数据库查询构造数据
+        const mockdata: any[] = [];
+        mockdata.push(['姓名', '电话', '地址']);
+        for (let i=0;i<10;i++) {
+            mockdata.push(['tom-' + i, '12345678-' + i, '北京-' + i])
+        }
+        return ResponseResult.SUCCESS('导出成功', {name: '测试文件.xlsx', data: mockdata});
+    }
+}
+
+export {
+    exportFile
+}`,
+            pattern: 'text'
+        })
+    }
+
+    if (userConfig.parseXlsx) {
+        files.push({
+            name: 'parseXlsx.ts',
+            describe: '解析xlsx文件模块',
+            path: ['modules', 'optional'],
+            content: 
+`import xlsx from 'node-xlsx';
+
+enum parseFileType {
+    parse1 = 'p1'   //  前后端约定一个ID对应一种数据解析行为，如p1代表批量导入用户
+}
+
+const parseXlsx = {
+    async work(param: any = {}, files: any) {
+        return new Promise(async (resolve, reject) => {
+            try {
+                const keys = Object.keys(files);
+                let file;
+                if (files[keys[0]].path) {
+                    file = files[keys[0]];
+                } else if (files[keys[0]].length) {
+                    file = files[keys[0]][0];
+                }
+
+                // 解析excel
+                const data = xlsx.parse(file.path)
+                switch (param.order) {
+                    case parseFileType.parse1:
+                        const result = await this.parse1(data, param);
+                        if (result) {
+                            resolve(result);
+                        } else {
+                            reject();
+                        }
+                        break;
+                    default:
+                        reject();
+                        break;
+                }
+            } catch (error) {
+                reject();
+            }
+        });
+
+
+    },
+
+    // 数据处理
+    async parse1(data: any, _param: any) {
+        return new Promise((resolve, _reject) => {
+            resolve(data);
+        });
+    }
+}
+
+export {
+    parseXlsx
+}`,
+            pattern: 'text'
+        })
+    }
+
+    if (userConfig.uploadFile) {
+        files.push({
+            name: 'uploadFile.ts',
+            describe: '上传文件模块',
+            path: ['modules', 'optional'],
+            content: 
+`import fs from 'fs';
+import path from 'path';
+import { File } from 'formidable';
+import { SystemService } from '@/config/config';
+
+// 文件存储配置
+interface fileSave {
+    name: string;
+    path: string;
+    size: number;
+    mimetype: string;
+}
+
+const fileSavePath = 'public/upload/';  //  文件存储路径
+
+const uploadFile = {
+    // 创建存储文件夹 - 需要启用上传文件服务前需要保证存储路径存在
+    async init() {
+        if (fs.existsSync(fileSavePath)) {
+            console.log(SystemService.uploadFileService, '上传文件夹已存在'); 
+        } else {
+            console.log(SystemService.uploadFileService, '上传文件夹不存在，开始创建');
+            try {
+                fs.mkdir(fileSavePath, { recursive: true }, (err, path) => {
+                    if (err) {
+                        console.log(SystemService.uploadFileService, '创建上传文件夹错误', err, path)
+                    } else {
+                        console.log(SystemService.uploadFileService, '创建上传文件夹成功')
+                    }
+                })
+            } catch (error) {
+                console.log(SystemService.uploadFileService, '创建文件夹失败', error)
+            }
+        }
+    },
+
+    async work(_param: any = {}, filesData: any) {
+        return new Promise(async (resolve, reject) => {
+            // 解开files最外层的包
+            const keys = Object.keys(filesData);
+            let files = filesData[keys[0]];
+            // 检测单文件上传还是多文件上传
+            const singleFile = files.path ? true : false;
+            if (singleFile) {
+                uploadFile.saveFile(files).then((res) => {
+                    console.log(SystemService.uploadFileService, '写入单文件成功', res);
+                    resolve([res]);
+                }).catch(
+                    (error) => {
+                        console.error(SystemService.saveFileService, '写入单文件报错', error);
+                        reject(false);
+                    }
+                );
+            } else {
+                const arrs = [];
+                for(let i=0;i< files.length;i++) {
+                    arrs.push(uploadFile.saveFile(files[i]));
+                }
+                // 写入多个文件
+                Promise.all(arrs).then(
+                    (res) => {
+                        console.log(SystemService.uploadFileService, '写入多文件成功', res);
+                        resolve(res);
+                    },
+                    (err) => {
+                        console.error(SystemService.saveFileService, '写入多文件失败', err);
+                        reject(false);
+                    }
+                ).catch(
+                    (error) => {
+                        console.error(SystemService.saveFileService, '写入多文件报错', error);
+                        reject(false);
+                    }
+                );
+            }
+        });
+    },
+
+    async saveFile(file: File) {
+        return new Promise((resolve, _reject) => {
+            // 创建可读流
+            const reader = fs.createReadStream(file.path);
+            const nodePath = process.cwd();
+            let filePath = path.join(nodePath, fileSavePath) + file.name;
+            //创建可写流
+            const upStream = fs.createWriteStream(filePath);
+            // 可读流通过管道写入可写流
+            reader.pipe(upStream).once('close', () => {
+                const result: fileSave = {
+                    name: file.name || '',
+                    path: filePath,
+                    size: file.size,
+                    mimetype: file.type || ''
+                };
+                resolve(result);
+            })
+        }).catch(
+            (error) => {
+                console.error(SystemService.uploadFileService, '捕获到写文件执行过程错误', {
+                    fileToSave: file,
+                    error
+                });
+            }
+        )
+    }
+}
+
+export {
+    uploadFile
+}`,
+            pattern: 'text'
+        })
+    }
+
+    if (userConfig.schedule) {
+        package_json.dependencies['node-schedule'] = '^1.3.2';
+        package_json.devDependencies['@types/node-schedule'] = '^1.3.1';
+        files.push({
+            name: 'schedule.ts',
+            describe: '定时任务模块',
+            path: ['modules', 'optional'],
+            content: 
+`import schedule from 'node-schedule';
+import { SystemService } from '@/config/config';
+
+const ScheduleJob = {
+    //统一管理定时任务
+    startSchedule() {
+        console.log(SystemService.scheduleService, '开启定时任务模块');
+        const rule = new schedule.RecurrenceRule();
+        const times = [1, 11, 21, 31, 41, 51];
+        rule.minute = times;
+        schedule.scheduleJob('0 * * * * *', () => {     //  方式一    每分钟执行
+            // schedule.scheduleJob(rule, () => {       //  方式二      每十分钟执行
+            console.log(SystemService.scheduleService, '开始执行定时任务');
+            ScheduleJob.testfunc();
+        })
+    },
+
+    async testfunc() {
+        console.log(SystemService.scheduleService, '测试定时执行模块');
+    }
+}
+
+
+export { ScheduleJob };`,
+            pattern: 'text'
+        })
+    }
+
+    if (userConfig.mysql) {
+        package_json.dependencies['mysql'] = '^2.18.1';
+        package_json.dependencies['mysql2'] = '^2.2.5';
+        package_json.devDependencies['@types/mysql'] = '^2.15.17';
+        files.push({
+            name: 'mysql.ts',
+            describe: 'mysql模块',
+            path: ['modules', 'optional'],
+            content: 
+`import mysql from 'mysql';
+import { Pool, PoolConnection } from 'mysql';
+import { config, SystemService } from '@/config/config';
+
+/**
+ * sql操作参数
+ */
+    interface mysqlQueryParam {
+    dbName: string,
+    sql: string,
+    params?: any[]
+}
+
+const dbNames = Object.keys(config.db_mysql);
+
+const dbPoolInstance = {
+    pools: <any>{},
+    setPool: (dbName: string, pool: Pool) => {
+        dbPoolInstance.pools[dbName] = pool;
+    },
+    getPool: (dbName: string): Pool => {
+        return dbPoolInstance.pools[dbName];
+    }
+} //  数据库池实例 多个数据库分别对应一个连接池
+
+const Mysql = {
+    // 初始化可能用到的数据库连接池
+    init: async (dbNames: any[]) => {
+        dbNames.forEach((dbName) => {
+            const pool = mysql.createPool({
+                host: config.db_mysql[dbName].host,
+                port: config.db_mysql[dbName].port,
+                user: config.db_mysql[dbName].user,
+                password: config.db_mysql[dbName].password,
+                database: dbName
+            });
+            dbPoolInstance.setPool(dbName, pool);
+            console.log(SystemService.mysqlService, '初始化 ' + dbName + ' 数据库连接池成功');
+
+        });
+    },
+
+    // 执行sql语句
+    doSql: async (dbName: string, sql: string, params: any[] = []) => {
+        return new Promise((resolve, reject) => {
+            const pool: Pool = dbPoolInstance.getPool(dbName);
+            if (dbNames.indexOf(dbName) === -1 || !pool) {
+                reject({
+                    result: false,
+                    err: true,
+                    status: '没找到此数据库配置或连接池实例 '+ dbName
+                })
+            }
+
+            pool.getConnection((err: any, connection: { query: (arg0: string, arg1: any[], arg2: (err: any, data: any, fields: any) => void) => void; release: () => void; }) => {
+                if (err) {
+                    console.error(SystemService.mysqlService, '从 ' + dbName + ' 数据库连接池获取连接失败', err);
+                    reject({
+                        result: false,
+                        err: true,
+                        status: '从 ' + dbName + ' 数据库连接池获取连接失败'
+                    });
+                } else {
+                    connection.query(sql, params, (err: any, data: any, fields: any) => {
+                        connection.release();
+                        resolve({ err, data, fields });
+                    })
+                }
+            });
+        });
+    },
+
+    // 执行单个事务 返回连接实例
+    doTransaction: async (dbName: string, sql: string, params: any[] = []) => {
+        return new Promise((resolve, reject) => {
+            const pool: Pool = dbPoolInstance.getPool(dbName);
+            if (dbNames.indexOf(dbName) === -1 || !pool) {
+                console.error(SystemService.mysqlService, '没找到此数据库配置或连接池实例 '+ dbName);
+                reject({
+                    result: false,
+                    err: true,
+                    status: '没找到此数据库配置或连接池实例 '+ dbName
+                })
+            }
+
+            pool.getConnection((err: any, connection: { beginTransaction: (arg0: (err: any) => void) => void; query: (arg0: string, arg1: any[], arg2: (err: any, data: any, fields: any) => void) => void; }) => {
+                if (err) {
+                    console.error(SystemService.mysqlService, '从 ' + dbName + ' 数据库连接池获取连接失败');
+                    reject({
+                        result: false,
+                        err: true,
+                        status: '从 ' + dbName + ' 数据库连接池获取连接失败'
+                    });
+                } else {
+                    connection.beginTransaction((err: any) => {
+                        if (err) {
+                            reject({
+                                result: false,
+                                err: true,
+                                status: '事务开启失败'
+                            });
+                        } else {
+                            connection.query(sql, params, (err: any, data: any, fields: any) => {
+                                resolve({err, data, fields, instance: connection});
+                            })
+                        }
+                    })
+                }
+            });
+        });
+    },
+
+    // 执行多个事务 事务不互相依赖
+    doTransactions: async (transactions: mysqlQueryParam[]) => {
+        return new Promise((resolve, reject) => {
+            const connections: PoolConnection[] = [];
+            let index = 0;
+
+            // 执行sql
+            function doTran(transaction: mysqlQueryParam) {
+                return new Promise(async (resolve, _reject) => {
+                    const result: any = await Mysql.doTransaction(transaction.dbName, transaction.sql).catch((_error) => {
+                        resolve(false);
+                    })
+                    console.log('执行第' + index + '个sql', result);
+                    if (result.err) {
+                        resolve(false);
+                    }
+                    connections.push(<PoolConnection>result.instance);
+                    resolve(true);
+                });
+            }
+
+            // 迭代器
+            async function iteral() {
+                const result = await doTran(transactions[index]);
+                console.log('执行结果', result);
+                if (result) {
+                    index++;
+                    if (index === transactions.length) {
+                        console.log('执行完毕开始提交')
+                        const commitResult = await Mysql.transaCommit(connections);
+                        // 执行并提交完毕
+                        if (commitResult) {
+                            resolve(true);
+                        } else {
+                            reject();
+                        }
+                    } else {
+                        iteral();
+                    }
+                } else {
+                    // 回滚
+                    Mysql.transaRollback(connections);
+                    reject();
+                }
+            }
+
+            iteral();
+        });
+    },
+
+    // 批量执行事务操作的提交部分
+    transaCommit: async (connections: PoolConnection[]) => {
+        return new Promise((resolve, _reject) => {
+            let index = 0;
+            // 回滚并释放连接
+            function connection_release() {
+                try {
+                    connections.forEach((connect) => {
+                        connect.rollback((_err: any) => {
+                            connect.release();
+                        });
+                    })
+                } catch (error) {
+                    console.error(SystemService.mysqlService, '释放链接报错', error);
+                }
+            }
+
+            // commit修改
+            function transaCommit (connection: PoolConnection) {
+                return new Promise((resolve, reject) => {
+                    connection.commit((err: any) => {
+                        if (err) {
+                            reject();
+                        }
+                        resolve(true);
+                    })
+                });
+            }
+    
+            // 迭代器
+            async function iteral() {
+                const result = await transaCommit(connections[index]);
+                if (result) {
+                    index++;
+                    if (index === connections.length) {
+                        connection_release();
+                        resolve(true);
+                    } else {
+                        iteral();
+                    }
+                } else {
+                    connection_release();
+                    resolve(false);
+                }
+            }
+    
+            // 开始执行
+            iteral();
+        });
+    },
+
+    // 批量执行事务操作的回滚部分
+    transaRollback: (connections: PoolConnection[]) => {
+        try {
+            connections.forEach((connect, _index) => {
+                connect.rollback((_err: any) => {
+                    connect.release();
+                });
+            })
+        } catch (error) {
+            
+        }
+    }
+}
+
+export {
+    Mysql
+}`,
+            pattern: 'text'
+        })
+    }
+
+    files.forEach((item, index) => {
+        let text = '';
+        switch (item.pattern) {
+            case 'text':
+                text = item.content;
+                break;
+            case 'json':
+                text = JSON.stringify(item.content, (key, value)=>{return value;}, 4);
+                break;
+            default:
+                throw new Error(`<<文件类型无法识别，写入 ${item.name} 失败！(The file type is not recognized, write ${item.name} failed)`);
+                break;
+        }
+        fs.writeFile(basePath + item.path.join(split) + split + item.name, text, (err, data) => {
+            if (err) {
+                throw err;
+            }
+            if (index === files.length - 1) {
+                console.log('>>写入文件成功！(Write file complete!)' + '\n');
+                installNodeModules();
+            }
+        })
+    })
+}
+
+// 安装依赖
+function installNodeModules() {
+    console.log('>>开始安装依赖...(Installing dependencies...)' + '\n');
+
+    let cmd = `cd ${options.project} && ${package_manager} install`;
+
+    exec(`${cmd}`, (error, stdout, stderr) => {
+        if (error) {
+            throw error;
+        }
+        if (stdout) {
+            console.log('>>' + stdout);
+            console.log(`>>依赖安装成功！(Dependent installation complete!)`);
+            process.stdin.pause();
+        }
+        if (stderr) {
+            console.log('<<' + stderr);
+        }
+    })
+    
+}
+
